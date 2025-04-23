@@ -1,1 +1,40 @@
+# --- CMake generated files ---
+CMakeFiles/              # CMake 작업 파일 디렉터리
+CMakeCache.txt           # CMake 캐시
+cmake_install.cmake      # 설치 스크립트
+Makefile                 # 기본 Makefile (빌드 디렉터리에만)
+install_manifest.txt     # 설치 목록
+CTestTestfile.cmake      # CTest 관련
+
+# (만약 build/ 디렉터리를 따로 둔다면)
+build/                   # 빌드 출력 전체
+
+# IDE / editor
+*.idea/                  # IntelliJ, CLion 등
+*.vscode/
+
+# Visual Studio
+*.vcxproj*
+*.sln
+
+# Xcode
+*.xcworkspace/
+*.xcodeproj/
+
+# 기타
+*.o
+*.obj
+*.so
+*.a
+*.dll
+*.exe
+
+# CMake 빌드 아티팩트
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/Makefile
+
+# 전체 빌드 디렉터리(있는 경우)
 build/
+
