@@ -7,9 +7,9 @@ set(CMAKE_CUDA_ARCHITECTURES 86)
 enable_language(CUDA)
 
 # ggml 경로 (상대 경로 또는 절대 경로 모두 가능)
-set(GGML_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../llama.cpp/ggml)
-set(GGML_CUDA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../llama.cpp/ggml/src/ggml-cuda)
-set(GGML_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../llama.cpp/ggml/include)
+set(GGML_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/ggml)
+set(GGML_CUDA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/ggml/src/ggml-cuda)
+set(GGML_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/ggml/include)
 
 
 # 소스 파일 지정
@@ -19,11 +19,6 @@ set(SOURCES
 
 # 실행 파일 생성
 add_executable(ggml_demo ${SOURCES})
-
-if (NOT TARGET ggml AND NOT LLAMA_USE_SYSTEM_GGML)
-    add_subdirectory(ggml)
-    # ... otherwise assume ggml is added by a parent CMakeLists.txt
-endif()
 
 # include 경로 추가
 target_include_directories(ggml_demo PRIVATE ${GGML_DIR})

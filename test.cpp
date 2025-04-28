@@ -120,6 +120,19 @@ int main() {
         }
         printf("\n");
     }
+    // a 는 ggml_tensor*
+    enum ggml_type    type    = a->type;     // 텐서의 데이터 타입
+    int64_t          ne0     = a->ne[0];     // 차원 0 크기 (가장 빠르게 변하는 축)
+    int64_t          ne1     = a->ne[1];     // 차원 1 크기
+
+    // 블록 크기 (type 당 sub-block 요소 수)
+    int64_t blk_elems = ggml_blck_size(GGML_TYPE_Q4_0);     // 예: GGML_TYPE_F32 인 경우 내부 블록 크기
+
+    // row_size: 한 “행”(fastest-varying 축의 전체 요소) 의 바이트 수
+    size_t  row_bytes = ggml_row_size(type, ne0); // ne0=가로(열) 개수
+
+    printf("block elems = %lld\n", (long long)blk_elems);
+    printf("row bytes  = %zu\n", row_bytes);
 
     // 6) 정리
     ggml_free(ctx);
