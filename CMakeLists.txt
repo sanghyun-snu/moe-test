@@ -1,46 +1,52 @@
 cmake_minimum_required(VERSION 3.14)
-project(ggml_demo C CXX)
+project(ggml_demo_root C CXX)
 
 set(CMAKE_CUDA_ARCHITECTURES 86)
 
-# CUDA 필수
 enable_language(CUDA)
 
-# ggml 경로 (상대 경로 또는 절대 경로 모두 가능)
-set(GGML_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/ggml)
-set(GGML_CUDA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/ggml/src/ggml-cuda)
+# ggml path
+set(GGML_BASE_LIB ${CMAKE_SOURCE_DIR}/lib/libggml-base.so)
+set(GGML_CORE_LIB ${CMAKE_SOURCE_DIR}/lib/libggml.so)
+set(GGML_CPU_LIB  ${CMAKE_SOURCE_DIR}/lib/libggml-cpu.so)
+set(GGML_CUDA_LIB ${CMAKE_SOURCE_DIR}/lib/libggml-cuda.so)
+
 set(GGML_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/ggml/include)
+set(GGML_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/ggml/src)
 
+# set(CMAKE_BUILD_RPATH        ${CMAKE_SOURCE_DIR}/lib)
+# set(CMAKE_INSTALL_RPATH      ${CMAKE_SOURCE_DIR}/lib)
+# set(CMAKE_SKIP_BUILD_RPATH   FALSE)
+# set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 
-# 소스 파일 지정
-set(SOURCES
-    test.cpp
-)
-
-# 실행 파일 생성
-add_executable(ggml_demo ${SOURCES})
-
-# include 경로 추가
-target_include_directories(ggml_demo PRIVATE ${GGML_DIR})
-target_include_directories(ggml_demo PRIVATE ${GGML_INCLUDE_DIR})
-
-# ggml에서 CUDA를 쓰기 때문에 math와 cuda 관련 라이브러리 필요
-target_link_libraries(ggml_demo PRIVATE m cuda cublas)
-
-# find and link pthread properly
+# pthread
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
-target_link_libraries(ggml_demo PRIVATE Threads::Threads)
 
-# (optionally) force ggml to build only the core with your preferred flags:
-set(GGML_STANDALONE OFF      CACHE BOOL "" FORCE)
-set(BUILD_SHARED_LIBS OFF    CACHE BOOL "" FORCE)   # or ON if you want .so
-set(GGML_BUILD_TESTS OFF     CACHE BOOL "" FORCE)
-set(GGML_BUILD_EXAMPLES OFF  CACHE BOOL "" FORCE)
-# ... any other GGML_XXX options before you add_subdirectory()
+# 1. ggml-core
+add_library(ggml SHARED IMPORTED)
+set_target_properties(ggml PROPERTIES
+    IMPORTED_LOCATION ${GGML_CORE_LIB}
+    INTERFACE_INCLUDE_DIRECTORIES ${GGML_INCLUDE_DIR}
+)
 
-# Tell CMake where to find ggml
-add_subdirectory(${GGML_DIR} EXCLUDE_FROM_ALL)
+# 2. ggml-base
+add_library(ggml-base SHARED IMPORTED)
+set_target_properties(ggml-base PROPERTIES
+    IMPORTED_LOCATION ${GGML_BASE_LIB}
+)
 
-# Your executable:
-target_link_libraries(ggml_demo PRIVATE ggml)
+# 3. ggml-cpu
+add_library(ggml-cpu SHARED IMPORTED)
+set_target_properties(ggml-cpu PROPERTIES
+    IMPORTED_LOCATION ${GGML_CPU_LIB}
+)
+
+# 4. ggml-cuda
+add_library(ggml-cuda SHARED IMPORTED)
+set_target_properties(ggml-cuda PROPERTIES
+    IMPORTED_LOCATION ${GGML_CUDA_LIB}
+)
+
+# 5. add test directory
+add_subdirectory(test)
