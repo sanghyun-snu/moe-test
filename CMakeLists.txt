@@ -14,6 +14,13 @@ set(GGML_CUDA_LIB ${CMAKE_SOURCE_DIR}/lib/libggml-cuda.so)
 set(GGML_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/ggml/include)
 set(GGML_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/ggml/src)
 
+# lz4 path
+set(LZ4_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lz4/lib)
+set(LZ4_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lz4/lib)
+set(LZ4_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib) # should copy lz4.so in this directory
+set(LZ4_LIB ${CMAKE_CURRENT_SOURCE_DIR}/lib/liblz4.so)
+set(LZ4_LIB_STATIC_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lz4/include)'
+
 # set(CMAKE_BUILD_RPATH        ${CMAKE_SOURCE_DIR}/lib)
 # set(CMAKE_INSTALL_RPATH      ${CMAKE_SOURCE_DIR}/lib)
 # set(CMAKE_SKIP_BUILD_RPATH   FALSE)
