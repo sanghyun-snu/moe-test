@@ -19,8 +19,9 @@ set(LZ4_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lz4/lib)
 set(LZ4_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lz4/lib)
 set(LZ4_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib) # should copy lz4.so in this directory
 set(LZ4_LIB ${CMAKE_CURRENT_SOURCE_DIR}/lib/liblz4.so)
-set(LZ4_LIB_STATIC_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lz4/include)'
 
+# json path
+set(JSON_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/json/single_include/nlohmann)
 # set(CMAKE_BUILD_RPATH        ${CMAKE_SOURCE_DIR}/lib)
 # set(CMAKE_INSTALL_RPATH      ${CMAKE_SOURCE_DIR}/lib)
 # set(CMAKE_SKIP_BUILD_RPATH   FALSE)
@@ -28,7 +29,9 @@ set(LZ4_LIB_STATIC_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lz4/include)'
 
 # pthread
 set(THREADS_PREFER_PTHREAD_FLAG ON)
+
 find_package(Threads REQUIRED)
+find_package(OpenMP REQUIRED)
 
 # 1. ggml-core
 add_library(ggml SHARED IMPORTED)
@@ -54,6 +57,12 @@ add_library(ggml-cuda SHARED IMPORTED)
 set_target_properties(ggml-cuda PROPERTIES
     IMPORTED_LOCATION ${GGML_CUDA_LIB}
 )
+
+add_library(lz4-lib SHARED IMPORTED)
+set_target_properties(lz4-lib PROPERTIES
+    IMPORTED_LOCATION ${LZ4_LIB}
+)
+
 
 # 5. add test directory
 add_subdirectory(test)

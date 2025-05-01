@@ -19,25 +19,28 @@ function(add_ggml_test_executable target_name source_file)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test
     )
 endfunction()
+
 function(add_lz4_executable target_name source_file)
     # 실행 파일 생성
-    add_executable(${target_name} ${source_file} src/lz4/lz4.c)
+    add_executable(${target_name} ${source_file})
 
     # include 디렉토리 설정 (LZ4용)
-    target_include_directories(${target_name} PRIVATE src/lz4)
+    target_include_directories(${target_name} PRIVATE ${LZ4_INCLUDE_DIR} ${JSON_INCLUDE_DIR})
 
     # 필요한 라이브러리 링크
     target_link_libraries(${target_name}
         PRIVATE
         m                 # 수학 라이브러리 (필요시)
         Threads::Threads # 스레드 (필요시)
+        lz4-lib          # lz4 라이브러리
+        OpenMP::OpenMP_CXX
     )
 
     # 실행 파일 출력 디렉터리 설정
     set_target_properties(${target_name} PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE
         INSTALL_RPATH "$ORIGIN/../lib"
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test
     )
 endfunction()
 
@@ -45,3 +48,5 @@ endfunction()
 add_ggml_test_executable(test_runner test.cpp)
 add_ggml_test_executable(test_graph graph.cpp)
 add_ggml_test_executable(test_block block.cpp)
+add_lz4_executable(test_lz4 lz4.cpp)
+add_lz4_executable(test_csr csr.cpp)
