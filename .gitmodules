@@ -7,3 +7,6 @@
 [submodule "src/ggml"]
 	path = src/ggml
 	url = https://github.com/ggml-org/ggml.git
+[submodule "src/lz4"]
+	path = src/lz4
+	url = https://github.com/lz4/lz4.git
