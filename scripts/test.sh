@@ -14,7 +14,7 @@ if [ "$#" -lt 1 ]; then
     exit 1
 fi
 
-# 첫 번째 인자를 실행할 테스트 실행파일 이름으로 사용
+
 EXEC_NAME="$1"
 shift
 
