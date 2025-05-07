@@ -1,212 +1,162 @@
 #include <iostream>
 #include <vector>
 #include <random>
+#include <algorithm>
 #include <chrono>
-#include <lz4.h>
 #include <cstring>
-#include <sched.h>
-#include <omp.h>
-#include <fstream>
-#include <json.hpp>
+#include <lz4.h>
 
 using namespace std;
 using namespace chrono;
-using json = nlohmann::json;
-
-void pin_to_cpu(int cpu_id) {
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(cpu_id, &cpuset);
-    if (sched_setaffinity(0, sizeof(cpuset), &cpuset) != 0) {
-        perror("sched_setaffinity");
-    } else {
-        cout << "Pinned to CPU " << cpu_id << endl;
-    }
-}
-
-void generate_dense_matrix(vector<float>& matrix, int rows, int cols, float sparsity) {
-    default_random_engine rng(42);
-    uniform_real_distribution<float> dist(0.0f, 1.0f);
-    #pragma omp parallel for collapse(2)
-    for (int i = 0; i < rows; ++i) {
-        for (int j = 0; j < cols; ++j) {
-            float r = dist(rng);
-            matrix[i * cols + j] = (r < sparsity) ? 0.0f : dist(rng);
-        }
-    }
-}
 
 struct CSRMatrix {
+    int rows, cols;
     vector<float> values;
     vector<int> col_indices;
     vector<int> row_ptr;
+    vector<char> compressed_col_indices;  // 압축된 열 인덱스를 저장
+    int compressed_size = 0;  // 압축 크기
 };
 
-CSRMatrix dense_to_csr(const vector<float>& dense, int rows, int cols) {
+vector<vector<float>> generate_dense_matrix(int rows, int cols, float sparsity) {
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_real_distribution<> dis(0.0, 1.0);
+    uniform_real_distribution<> val_dis(-1.0, 1.0);
+
+    vector<vector<float>> mat(rows, vector<float>(cols, 0));
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j)
+            if (dis(gen) > sparsity)
+                mat[i][j] = val_dis(gen);
+    return mat;
+}
+
+vector<vector<float>> generate_structured_sparse_matrix(int rows, int cols, float sparsity) {
+    random_device rd;
+    mt19937 gen(rd());
+    int prune_cols = static_cast<int>(cols * sparsity);
+
+    vector<int> indices(cols);
+    iota(indices.begin(), indices.end(), 0);
+    shuffle(indices.begin(), indices.end(), gen);
+
+    vector<bool> keep(cols, true);
+    for (int i = 0; i < prune_cols; ++i)
+        keep[indices[i]] = false;
+
+    uniform_real_distribution<> val_dis(-1.0, 1.0);
+    vector<vector<float>> mat(rows, vector<float>(cols, 0));
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j)
+            if (keep[j])
+                mat[i][j] = val_dis(gen);
+    return mat;
+}
+
+CSRMatrix dense_to_csr(const vector<vector<float>>& mat) {
     CSRMatrix csr;
-    csr.row_ptr.resize(rows + 1, 0);
+    csr.rows = mat.size();
+    csr.cols = mat[0].size();
+    csr.row_ptr.push_back(0);
 
-    vector<int> nnz_per_row(rows, 0);
-    #pragma omp parallel for
-    for (int i = 0; i < rows; ++i) {
-        int count = 0;
-        for (int j = 0; j < cols; ++j) {
-            if (dense[i * cols + j] != 0.0f)
-                count++;
-        }
-        nnz_per_row[i] = count;
-    }
-
-    for (int i = 0; i < rows; ++i) {
-        csr.row_ptr[i + 1] = csr.row_ptr[i] + nnz_per_row[i];
-    }
-
-    int nnz_total = csr.row_ptr[rows];
-    csr.values.resize(nnz_total);
-    csr.col_indices.resize(nnz_total);
-
-    #pragma omp parallel for
-    for (int i = 0; i < rows; ++i) {
-        int offset = csr.row_ptr[i];
-        for (int j = 0; j < cols; ++j) {
-            float val = dense[i * cols + j];
-            if (val != 0.0f) {
-                csr.values[offset] = val;
-                csr.col_indices[offset] = j;
-                offset++;
+    for (const auto& row : mat) {
+        for (int j = 0; j < row.size(); ++j) {
+            if (row[j] != 0.0f) {
+                csr.values.push_back(row[j]);
+                csr.col_indices.push_back(j);
             }
         }
+        csr.row_ptr.push_back(csr.values.size());
     }
+
+    // 열 인덱스를 미리 압축
+    int original_size = csr.col_indices.size() * sizeof(int);
+    int max_compressed_size = LZ4_compressBound(original_size);
+    csr.compressed_col_indices.resize(max_compressed_size);
+    csr.compressed_size = LZ4_compress_default(
+        (char*)csr.col_indices.data(),
+        csr.compressed_col_indices.data(),
+        original_size,
+        max_compressed_size
+    );
 
     return csr;
 }
 
-int compress_lz4(const char* input, int input_size, vector<char>& compressed) {
-    int max_dst_size = LZ4_compressBound(input_size);
-    compressed.resize(max_dst_size);
-    int compressed_size = LZ4_compress_default(input, compressed.data(), input_size, max_dst_size);
-    compressed.resize(compressed_size);
-    return compressed_size;
+vector<float> csr_matvec(const CSRMatrix& csr, const vector<float>& x) {
+    vector<float> y(csr.rows, 0.0f);
+    for (int i = 0; i < csr.rows; ++i)
+        for (int j = csr.row_ptr[i]; j < csr.row_ptr[i + 1]; ++j)
+            y[i] += csr.values[j] * x[csr.col_indices[j]];
+    return y;
 }
 
-void run_experiment(float sparsity, int rows, int cols, int num_threads, ofstream& csv) {
-    omp_set_num_threads(num_threads);
-    cout << "\n== Threads: " << num_threads << ", Sparsity: " << sparsity << " ==" << endl;
-
-    vector<float> dense(rows * cols);
-    generate_dense_matrix(dense, rows, cols, sparsity);
-
-    auto start = high_resolution_clock::now();
-    int dense_size = dense.size() * sizeof(float);
-    vector<char> dense_compressed;
-    int dense_compressed_size = compress_lz4(reinterpret_cast<const char*>(dense.data()), dense_size, dense_compressed);
-    auto end = high_resolution_clock::now();
-    auto dense_time_ms = duration_cast<nanoseconds>(end - start).count() / 1e6;
-
-    start = high_resolution_clock::now();
-    CSRMatrix csr = dense_to_csr(dense, rows, cols);
-    end = high_resolution_clock::now();
-    auto csr_convert_time = duration_cast<nanoseconds>(end - start).count() / 1e6;
-
-    int csr_val_size = csr.values.size() * sizeof(float);
-    int csr_idx_size = csr.col_indices.size() * sizeof(int);
-    int csr_ptr_size = csr.row_ptr.size() * sizeof(int);
-    int csr_total_size = csr_val_size + csr_idx_size + csr_ptr_size;
-
-    vector<char> csr_blob(csr_total_size);
-    memcpy(csr_blob.data(), csr.values.data(), csr_val_size);
-    memcpy(csr_blob.data() + csr_val_size, csr.col_indices.data(), csr_idx_size);
-    memcpy(csr_blob.data() + csr_val_size + csr_idx_size, csr.row_ptr.data(), csr_ptr_size);
-
-    start = high_resolution_clock::now();
-    vector<char> csr_compressed;
-    int csr_compressed_size = compress_lz4(csr_blob.data(), csr_total_size, csr_compressed);
-    end = high_resolution_clock::now();
-    auto lz4_time_ms = duration_cast<nanoseconds>(end - start).count() / 1e6;
-
-    float csr_ratio = 100.0 * csr_total_size / dense_size;
-    float lz4_efficiency = 100.0 * (1.0 - (float)csr_compressed_size / csr_total_size);
-    float total_efficiency = 100.0 * (1.0 - (float)csr_compressed_size / dense_size);
-
-    csv << num_threads << "," << sparsity << "," << dense_size << "," << dense_compressed_size << "," << dense_time_ms << ","
-        << csr_total_size << "," << csr_compressed_size << "," << csr_ratio << ","
-        << lz4_efficiency << "," << total_efficiency << ","
-        << csr_convert_time << "," << lz4_time_ms << endl;
+vector<float> csr_matvec_opt(const CSRMatrix& csr, const vector<float>& x) {
+    vector<float> y(csr.rows, 0.0f);
+    for (int i = 0; i < csr.rows; ++i)
+        for (int j = csr.row_ptr[0]; j < csr.row_ptr[0 + 1]; ++j)
+            y[i] += csr.values[j] * x[csr.col_indices[j]];
+    return y;
 }
 
-// ... (상단 #include 및 정의는 동일)
+vector<float> csr_matvec_with_compressed_col(const CSRMatrix& csr, const vector<float>& x) {
+    // 복호화
+    vector<int> decompressed(csr.col_indices.size());
+    LZ4_decompress_safe(
+        csr.compressed_col_indices.data(),
+        (char*)decompressed.data(),
+        csr.compressed_size,
+        csr.col_indices.size() * sizeof(int)
+    );
+
+    // 연산
+    vector<float> y(csr.rows, 0.0f);
+    for (int i = 0; i < csr.rows; ++i)
+        for (int j = csr.row_ptr[i]; j < csr.row_ptr[i + 1]; ++j)
+            y[i] += csr.values[j] * x[decompressed[j]];
+    return y;
+}
 
 int main() {
-    pin_to_cpu(0);
+    int rows = 4000, cols = 4000;
+    float sparsity = 0.5;
+    vector<float> x(cols, 1.0f);
 
-    ifstream config_file("config.json");
-    json config;
-    config_file >> config;
+    // 1. Random Sparse
+    auto dense1 = generate_dense_matrix(rows, cols, sparsity);
+    auto csr1 = dense_to_csr(dense1);
 
-    vector<int> thread_list = config["threads"].get<vector<int>>();
-    vector<float> sparsity_list = config["sparsity_list"].get<vector<float>>();
-    vector<vector<int>> sizes = config["matrix_sizes"]; // [[rows, cols], [rows, cols], ...]
+    cout << "== Random Sparse Matrix ==\n";
+    auto start = high_resolution_clock::now();
+    auto y1 = csr_matvec(csr1, x);
+    auto end = high_resolution_clock::now();
+    cout << "CSR matvec: " << duration_cast<microseconds>(end - start).count() << " us\n";
 
-    ofstream csv("results.csv");
-    csv << "threads,rows,cols,sparsity,dense_size,dense_compressed_size,dense_time_ms,csr_size,csr_compressed_size,csr_ratio,lz4_efficiency,total_efficiency,csr_time_ms,lz4_time_ms\n";
+    start = high_resolution_clock::now();
+    auto y2 = csr_matvec_opt(csr1, x);
+    end = high_resolution_clock::now();
+    cout << "CSR matvec opt: " << duration_cast<microseconds>(end - start).count() << " us\n";
 
-    for (int threads : thread_list) {
-        omp_set_num_threads(threads);
-        cout << "\n==== Running with " << threads << " threads ====" << endl;
+    start = high_resolution_clock::now();
+    auto y3 = csr_matvec_with_compressed_col(csr1, x);
+    end = high_resolution_clock::now();
+    cout << "CSR with compressed col indices (includes decompression): " << duration_cast<microseconds>(end - start).count() << " us\n";
 
-        for (auto& size_pair : sizes) {
-            int rows = size_pair[0];
-            int cols = size_pair[1];
+    // 2. Structured Sparse
+    auto dense2 = generate_structured_sparse_matrix(rows, cols, sparsity);
+    auto csr2 = dense_to_csr(dense2);
 
-            for (float sparsity : sparsity_list) {
-                cout << "\n--- rows=" << rows << ", cols=" << cols << ", sparsity=" << sparsity << " ---" << endl;
+    cout << "\n== Structured Sparse Matrix ==\n";
+    start = high_resolution_clock::now();
+    auto y4 = csr_matvec(csr2, x);
+    end = high_resolution_clock::now();
+    cout << "CSR matvec: " << duration_cast<microseconds>(end - start).count() << " us\n";
 
-                vector<float> dense(rows * cols);
-                generate_dense_matrix(dense, rows, cols, sparsity);
+    start = high_resolution_clock::now();
+    auto y5 = csr_matvec_with_compressed_col(csr2, x);
+    end = high_resolution_clock::now();
+    cout << "CSR with compressed col indices (includes decompression): " << duration_cast<microseconds>(end - start).count() << " us\n";
 
-                // Dense + LZ4
-                auto start = high_resolution_clock::now();
-                int dense_size = dense.size() * sizeof(float);
-                vector<char> dense_compressed;
-                int dense_compressed_size = compress_lz4(reinterpret_cast<const char*>(dense.data()), dense_size, dense_compressed);
-                auto end = high_resolution_clock::now();
-                auto dense_time_ms = duration_cast<nanoseconds>(end - start).count() / 1e6;
-
-                // Dense -> CSR
-                start = high_resolution_clock::now();
-                CSRMatrix csr = dense_to_csr(dense, rows, cols);
-                end = high_resolution_clock::now();
-                auto csr_convert_time = duration_cast<nanoseconds>(end - start).count() / 1e6;
-
-                int csr_val_size = csr.values.size() * sizeof(float);
-                int csr_idx_size = csr.col_indices.size() * sizeof(int);
-                int csr_ptr_size = csr.row_ptr.size() * sizeof(int);
-                int csr_total_size = csr_val_size + csr_idx_size + csr_ptr_size;
-
-                vector<char> csr_blob(csr_total_size);
-                memcpy(csr_blob.data(), csr.values.data(), csr_val_size);
-                memcpy(csr_blob.data() + csr_val_size, csr.col_indices.data(), csr_idx_size);
-                memcpy(csr_blob.data() + csr_val_size + csr_idx_size, csr.row_ptr.data(), csr_ptr_size);
-
-                start = high_resolution_clock::now();
-                vector<char> csr_compressed;
-                int csr_compressed_size = compress_lz4(csr_blob.data(), csr_total_size, csr_compressed);
-                end = high_resolution_clock::now();
-                auto lz4_time_ms = duration_cast<nanoseconds>(end - start).count() / 1e6;
-
-                float csr_ratio = 100.0 * csr_total_size / dense_size;
-                float lz4_efficiency = 100.0 * (1.0 - (float)csr_compressed_size / csr_total_size);
-                float total_efficiency = 100.0 * (1.0 - (float)csr_compressed_size / dense_size);
-
-                csv << threads << "," << rows << "," << cols << "," << sparsity << ","
-                    << dense_size << "," << dense_compressed_size << "," << dense_time_ms << ","
-                    << csr_total_size << "," << csr_compressed_size << "," << csr_ratio << ","
-                    << lz4_efficiency << "," << total_efficiency << ","
-                    << csr_convert_time << "," << lz4_time_ms << endl;
-            }
-        }
-    }
-
-    csv.close();
     return 0;
 }
