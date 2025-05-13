@@ -1,0 +1,35 @@
+diff --git a/src/llama.cpp b/src/llama.cpp
+index 1234567..abcdef0 100644
+--- a/src/llama.cpp
++++ b/src/llama.cpp
+@@ -800,6 +800,25 @@ static bool llama_eval(
+         // pre normalize
+         {
+             struct ggml_tensor * norm = ggml_rms_norm(ctx0, inpL, model.layers[il].attention_norm.weight);
++
++            // ───────── layer timing start ─────────
++            // 여기서부터 이 레이어 계산을 측정
++            long long t0 = ggml_time_nsec();
++
++            // (원본 평가 코드 계속)
++
+             inpL = norm;
+         }
+
++        // transformer
++        {
++            // (기존 for il loop 내) ...
++
++            // ───────── 여기서 layer 연산 ─────────
++            // [기존 llama.cpp 레이어 코드 전체]
++            // 예: self-attn qkv, multi-head, ffn 등
++
++            // ───────── layer timing end ─────────
++            long long t1 = ggml_time_nsec();
++            double ms = (t1 - t0) / 1e6;
++            fprintf(stderr, "[LAYER %3d] time = %6.3f ms\n", il, ms);
++        }
++
+         // apply rotary embeddings, etc...
+
+         // attention

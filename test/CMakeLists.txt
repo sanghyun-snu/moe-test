@@ -20,8 +20,8 @@ function(add_ggml_test_executable target_name source_file)
     )
 endfunction()
 
-function(add_cuda_test_executable target_name source_file)
-    add_executable(${target_name} ${source_file})
+function(add_cuda_test_executable target_name)
+    add_executable(${target_name} ${ARGN})
     target_include_directories(${target_name} PRIVATE)
     target_link_libraries(${target_name} 
         PRIVATE
@@ -29,6 +29,9 @@ function(add_cuda_test_executable target_name source_file)
         cuda
         cublas
         Threads::Threads
+        CUDA::cudart 
+        CUDA::cublas
+        ${NVML_LIB}
     )
     set_target_properties(${target_name} PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE
@@ -71,3 +74,9 @@ add_lz4_executable(test_csr csr.cpp)
 add_lz4_executable(test_cache cacheline.cpp)
 add_cuda_test_executable(test_gpu_cache cache-gpu.cu)
 add_cuda_test_executable(test_warp warp.cu)
+
+add_cuda_test_executable(memcpy memory/memcpy.cpp)
+add_cuda_test_executable(direct memory/direct.cpp)
+
+
+add_cuda_test_executable(gpu-test gpu/gpu-test.cpp gpu/gpu-bench.cpp)

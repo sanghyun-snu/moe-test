@@ -40,4 +40,12 @@ build/
 
 # png
 *png
+
+# models
 *.gguf
+# ignore src/models model files
+
+
+
+src/.json
+src/models/pruned-gpt2/

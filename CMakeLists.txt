@@ -32,6 +32,13 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 
 find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED)
+find_package(CUDAToolkit REQUIRED)
+find_library(NVML_LIB
+  NAMES nvidia-ml
+  REQUIRED
+  # (필요하다면 아래 HINTS/PATHS 추가)
+  HINTS /usr/lib/x86_64-linux-gnu /usr/lib
+)
 
 # 1. ggml-core
 add_library(ggml SHARED IMPORTED)
